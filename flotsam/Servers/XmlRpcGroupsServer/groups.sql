@@ -5,6 +5,8 @@
 CREATE TABLE `osagent` (
   `AgentID` char(36) NOT NULL default '',
   `ActiveGroupID` char(36) NOT NULL default '',
+  `Online` int(1) unsigned NOT NULL default '0',
+  `LastLogin` int(10) unsigned NOT NULL default '0',
   PRIMARY KEY  (`AgentID`)
 ) ENGINE=MyISAM;
 

@@ -1013,18 +1013,36 @@
         $groupID = $params['GroupID'];
         $escapedGroupID = mysql_real_escape_string($groupID);
         
-        $sql = " SELECT osgroupmembership.AgentID"
+         //If simulator group module is not updated, then we always want everyone to be listet for backward compatibility
+        if(strtolower($params['ListOffline']) == 'false' || $params['ListOffline'] == '0')
+        {
+            $ListOffline = false;
+        }
+        else
+        {
+            $ListOffline = true;
+        }
+
+       $sql = " SELECT osgroupmembership.AgentID"
               ." , osgroupmembership.Contribution, osgroupmembership.ListInProfile, osgroupmembership.AcceptNotices"
               ." , osgroupmembership.SelectedRoleID, osrole.Title"
+              ." , OsAgent.Online, OsAgent.LastLogin"
               ." , CASE WHEN OwnerRoleMembership.AgentID IS NOT NULL THEN 1 ELSE 0 END AS IsOwner"
               ." FROM osgroup JOIN osgroupmembership ON (osgroup.GroupID = osgroupmembership.GroupID)"
               ."              JOIN osrole ON (osgroupmembership.SelectedRoleID = osrole.RoleID AND osgroupmembership.GroupID = osrole.GroupID)"
               ."              JOIN osrole AS OwnerRole ON (osgroup.OwnerRoleID  = OwnerRole.RoleID AND osgroup.GroupID  = OwnerRole.GroupID)"
+              ."              JOIN osagent AS OsAgent ON osgroupmembership.AgentID = OsAgent.AgentID"
               ."         LEFT JOIN osgrouprolemembership AS OwnerRoleMembership ON (osgroup.OwnerRoleID       = OwnerRoleMembership.RoleID 
                                                                                AND (osgroup.GroupID           = OwnerRoleMembership.GroupID)
                                                                                AND (osgroupmembership.AgentID = OwnerRoleMembership.AgentID))"
               ." WHERE osgroup.GroupID = '$escapedGroupID'";
         
+        if(!$ListOffline )
+        {
+            //Only list online members, e.g. for groupchat or future implementations eg. ossl's
+            $sql .= " AND OsAgent.Online = 1";
+        }
+
         $groupmemberResults = mysql_query($sql, $groupDBCon);
         if (!$groupmemberResults) 
         {
@@ -1688,6 +1706,37 @@
         return TRUE;
     }
 	
+    function setAgentLoginData($params)
+    {
+        // Tracking online status and last logins within the groups module is more efficiant than requesting the data inworld from the grid, especialy for larger groups.
+        // Online status and last login can have outdated information untill all simulators in the grid are using a current groupmodule version
+        
+        global $groupEnforceGroupPerms, $requestingAgent, $uuidZero, $groupDBCon;
+        $agentID = mysql_real_escape_string( $params['AgentID'] );
+        $agentOnline = (bool)$params['agentOnline'];
+        $agentLastLogin = mysql_real_escape_string( $params['LastLogin'] );
+		
+        if(strtolower($params['agentOnline']) == 'true' || $params['agentOnline'] == '1')
+        {
+            $agentOnline = 1;
+        }
+        else
+        {
+            $agentOnline = 0;
+        }
+		
+        $sql = " UPDATE osagent "
+              ." SET Online = $agentOnline"
+              ." 	,LastLogin = $agentLastLogin"
+              ." WHERE AgentID = '$agentID'";
+    
+        if (!mysql_query($sql, $groupDBCon))
+        {
+            return array('error' => "Could not successfully run query ($sql) from DB: " . mysql_error(), 'params' => var_export($params, TRUE));
+        }
+    
+        return array("success" => "true");
+    }
     
     $s = new xmlrpc_server(array(
                             "test"                               => array("function" => "test")
@@ -1725,6 +1774,7 @@
                           , "groups.getGroupNotice"                => array("function" => "getGroupNotice", "signature" => $common_sig)
                           , "groups.addGroupNotice"                => array("function" => "addGroupNotice", "signature" => $common_sig)
                           
+                          , "groups.setAgentLoginData"                => array("function" => "setAgentLoginData", "signature" => $common_sig)                           
                           
                           
                           
